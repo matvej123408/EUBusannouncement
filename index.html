@@ -1,283 +1,313 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Bus Route Editor + Map</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<title>Bus Route Editor</title>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      padding: 20px;
-    }
-    h1, h2 { color: #333; }
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css"/>
 
-    button, select, input[type="file"] {
-      padding: 10px 16px;
-      font-size: 16px;
-      margin: 5px;
-      border: none;
-      border-radius: 8px;
-      background-color: #007bff;
-      color: white;
-      cursor: pointer;
-    }
+<style>
 
-    button:hover, select:hover {
-      background-color: #0056b3;
-    }
+body{
+font-family:Arial;
+background:#f4f4f4;
+padding:20px;
+}
 
-    .card {
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      margin: 20px 0;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
+.card{
+background:white;
+padding:20px;
+margin-bottom:20px;
+border-radius:10px;
+box-shadow:0 4px 8px rgba(0,0,0,0.1);
+}
 
-    .time {
-      color: gray;
-      font-size: 14px;
-    }
+button{
+padding:10px 15px;
+margin:5px;
+border:none;
+border-radius:8px;
+background:#007bff;
+color:white;
+cursor:pointer;
+}
 
-    ul { list-style: none; padding: 0; }
-    li { margin: 5px 0; }
+button:hover{
+background:#0056b3;
+}
 
-    #map {
-      height: 400px;
-      margin-top: 20px;
-      border-radius: 12px;
-      overflow: hidden;
-    }
+#map{
+height:450px;
+border-radius:10px;
+}
 
-    textarea {
-      width: 100%;
-      height: 100px;
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 8px;
-      font-family: monospace;
-    }
-  </style>
+textarea{
+width:100%;
+height:120px;
+font-family:monospace;
+}
+
+</style>
 </head>
 
 <body>
 
-<!-- AUDIO MENU -->
 <div class="card">
-  <h2>Audio Menu</h2>
-  <input type="file" accept=".mp3" multiple onchange="importSounds(event)">
-  <div id="audioMenu"></div>
+
+<h2>Bus Announcement</h2>
+
+<h1 id="displayText">Click Next</h1>
+
+<select id="langSelect">
+
+<option value="de-DE">Deutsch 🇩🇪</option>
+<option value="en-US">English 🇺🇸</option>
+<option value="cs-CZ">Čeština 🇨🇿</option>
+<option value="fr-FR">Français 🇫🇷</option>
+<option value="it-IT">Italiano 🇮🇹</option>
+<option value="uk-UA">Українська 🇺🇦</option>
+
+</select>
+
+<br><br>
+
+<button onclick="nextStop()">Next</button>
+<button onclick="resetStops()">Reset</button>
+
 </div>
 
-<!-- MAIN PANEL -->
 <div class="card">
-  <h1 id="displayText">Click "Next"</h1>
 
-  <select id="langSelect">
-    <option value="de-DE">Deutsch 🇩🇪</option>
-    <option value="en-US">English 🇺🇸</option>
-    <option value="it-IT">Italiano 🇮🇹</option>
-    <option value="fr-FR">Français 🇫🇷</option>
-    <option value="uk-UA">Українська 🇺🇦</option>
-  </select>
+<h2>Stops Editor</h2>
 
-  <p class="time" id="timeInfo"></p>
+<textarea id="stopsEditor"></textarea>
 
-  <button onclick="nextText()">Next</button>
-  <button onclick="resetText()">Reset</button>
+<br>
+
+<button onclick="applyStops()">Apply Stops</button>
+<button onclick="addMarkerMode()">Add Stop</button>
+<button onclick="exportRoute()">Export Route</button>
+
 </div>
 
-<!-- HISTORY -->
 <div class="card">
-  <h2>History</h2>
-  <ul id="historyList"></ul>
-</div>
 
-<audio id="clickSound" src="click.mp3"></audio>
+<h2>Map</h2>
 
-<!-- STOPS EDITOR -->
-<div class="card">
-  <h2>Bus Stops Editor</h2>
-  <p>Format: name,lat,lon (one per line)</p>
-  <textarea id="stopsEditor"></textarea><br>
-  <button onclick="applyStops()">Apply Stops</button>
-  <button onclick="addMarkerMode()">Add Marker</button>
-</div>
+<div id="map"></div>
 
-<!-- MAP -->
-<div class="card">
-  <h2>Map</h2>
-  <div id="map"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
 
 <script>
-/* ================= GLOBAL DATA ================= */
 
-let texts = ["Zurich", "Zug", "Lugano", "Como", "Milan"];
-let index = 0;
-let addingMarker = false;
+let texts=[]
+let stopCoords=[]
+let index=0
+let adding=false
 
-const historyList = document.getElementById("historyList");
-const clickSound = document.getElementById("clickSound");
-const langSelect = document.getElementById("langSelect");
+const langSelect=document.getElementById("langSelect")
 
-/* ================= TEXT TO SPEECH ================= */
-
-function speak(text) {
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = langSelect.value;
-  speechSynthesis.speak(utter);
+const translations={
+"de-DE":"Nächster Halt",
+"en-US":"Next stop",
+"cs-CZ":"Příští zastávka",
+"fr-FR":"Prochain arrêt",
+"it-IT":"Prossima fermata",
+"uk-UA":"Наступна зупинка"
 }
 
-const nextStopTranslations = {
-  "de-DE": "Nächster Halt",
-  "en-US": "Next stop",
-  "it-IT": "Prossima fermata",
-  "fr-FR": "Prochain arrêt",
-  "uk-UA": "Наступна зупинка"
-};
+function speak(text){
 
-/* ================= BUTTON ACTIONS ================= */
+const u=new SpeechSynthesisUtterance(text)
+u.lang=langSelect.value
+speechSynthesis.speak(u)
 
-function nextText() {
-  if (index >= texts.length) return;
-
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString();
-
-  document.getElementById("displayText").textContent = texts[index];
-  document.getElementById("timeInfo").textContent = "Clicked at " + timeStr;
-
-  clickSound.play();
-
-  const phrase = nextStopTranslations[langSelect.value] || "Next stop";
-  speak(phrase);
-  speak(texts[index]);
-
-  const li = document.createElement("li");
-  li.textContent = texts[index] + " (" + timeStr + ")";
-  historyList.appendChild(li);
-
-  index++;
 }
 
-function resetText() {
-  index = 0;
-  document.getElementById("displayText").textContent = 'Click "Next"';
-  document.getElementById("timeInfo").textContent = "";
-  historyList.innerHTML = "";
+function nextStop(){
+
+if(index>=texts.length)return
+
+document.getElementById("displayText").innerText=texts[index]
+
+let phrase=translations[langSelect.value]||"Next stop"
+
+speak(phrase)
+speak(texts[index])
+
+index++
+
 }
 
-/* ================= MAP ================= */
+function resetStops(){
 
-const map = L.map('map').setView([47.3769, 8.5417], 8);
+index=0
+document.getElementById("displayText").innerText="Click Next"
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap',
-  maxZoom: 18
-}).addTo(map);
-
-let markerLayer = L.layerGroup().addTo(map);
-
-function applyStops() {
-  const editor = document.getElementById("stopsEditor").value.trim();
-  const lines = editor.split("\n");
-
-  texts = [];
-  markerLayer.clearLayers();
-  const coords = [];
-
-  lines.forEach(line => {
-    const parts = line.split(",");
-    if (parts.length === 3) {
-      const name = parts[0].trim();
-      const lat = parseFloat(parts[1]);
-      const lon = parseFloat(parts[2]);
-
-      if (!isNaN(lat) && !isNaN(lon)) {
-        texts.push(name);
-        L.marker([lat, lon]).addTo(markerLayer).bindPopup(name);
-        coords.push([lat, lon]);
-      }
-    }
-  });
-
-  if (coords.length > 1) {
-    L.polyline(coords, { color: "blue", weight: 4 }).addTo(markerLayer);
-    map.fitBounds(coords);
-  }
-
-  resetText();
 }
 
-function addMarkerMode() {
-  alert("Click on the map to add a new stop");
-  addingMarker = true;
+const map=L.map("map").setView([47.3769,8.5417],8)
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+maxZoom:19
+}).addTo(map)
+
+let markerLayer=L.layerGroup().addTo(map)
+
+let routingControl=null
+
+function applyStops(){
+
+const text=document.getElementById("stopsEditor").value.trim()
+
+const lines=text.split("\n")
+
+texts=[]
+stopCoords=[]
+
+markerLayer.clearLayers()
+
+let waypoints=[]
+
+lines.forEach(line=>{
+
+let p=line.split(",")
+
+if(p.length===3){
+
+let name=p[0].trim()
+let lat=parseFloat(p[1])
+let lon=parseFloat(p[2])
+
+texts.push(name)
+stopCoords.push([lat,lon])
+
+L.marker([lat,lon]).addTo(markerLayer).bindPopup(name)
+
+waypoints.push(L.latLng(lat,lon))
+
 }
 
-map.on("click", function(e) {
-  if (!addingMarker) return;
+})
 
-  const name = prompt("Enter stop name:");
-  if (name) {
-    const lat = e.latlng.lat.toFixed(6);
-    const lon = e.latlng.lng.toFixed(6);
+if(routingControl){
 
-    const editor = document.getElementById("stopsEditor");
-    editor.value += (editor.value.trim() ? "\n" : "") + `${name},${lat},${lon}`;
-    applyStops();
-  }
-  addingMarker = false;
-});
+map.removeControl(routingControl)
 
-/* ================= DEFAULT STOPS ================= */
+}
 
-document.getElementById("stopsEditor").value =
+routingControl=L.Routing.control({
+
+waypoints:waypoints,
+lineOptions:{styles:[{color:"blue",weight:5}]},
+createMarker:()=>null,
+addWaypoints:false
+
+}).addTo(map)
+
+resetStops()
+
+}
+
+function addMarkerMode(){
+
+alert("Click map to add stop")
+adding=true
+
+}
+
+map.on("click",function(e){
+
+if(!adding)return
+
+let name=prompt("Stop name")
+
+if(name){
+
+let lat=e.latlng.lat.toFixed(6)
+let lon=e.latlng.lng.toFixed(6)
+
+let editor=document.getElementById("stopsEditor")
+
+editor.value+=(editor.value.trim()?"\n":"")+name+","+lat+","+lon
+
+applyStops()
+
+}
+
+adding=false
+
+})
+
+function exportRoute(){
+
+const data=document.getElementById("stopsEditor").value
+
+const blob=new Blob([data],{type:"text/plain"})
+
+const a=document.createElement("a")
+
+a.href=URL.createObjectURL(blob)
+
+a.download="bus_route.txt"
+
+a.click()
+
+}
+
+function distance(lat1,lon1,lat2,lon2){
+
+const R=6371000
+
+const dLat=(lat2-lat1)*Math.PI/180
+const dLon=(lon2-lon1)*Math.PI/180
+
+const a=
+Math.sin(dLat/2)*Math.sin(dLat/2)+
+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+Math.sin(dLon/2)*Math.sin(dLon/2)
+
+const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
+
+return R*c
+
+}
+
+navigator.geolocation.watchPosition(function(pos){
+
+if(index>=stopCoords.length)return
+
+const lat=pos.coords.latitude
+const lon=pos.coords.longitude
+
+const stop=stopCoords[index]
+
+const dist=distance(lat,lon,stop[0],stop[1])
+
+if(dist<=30){
+
+nextStop()
+
+}
+
+})
+
+document.getElementById("stopsEditor").value=
+
 `Zurich,47.3769,8.5417
 Zug,47.1662,8.5155
 Lugano,46.0037,8.9511
 Como,45.8081,9.0852
-Milan,45.4642,9.1900`;
+Milan,45.4642,9.1900`
 
-applyStops();
+applyStops()
 
-/* ================= CUSTOM AUDIO ================= */
-
-function importSounds(event) {
-  const files = event.target.files;
-  const menu = document.getElementById("audioMenu");
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const url = URL.createObjectURL(file);
-    const audio = new Audio(url);
-    audio.id = "userAudio" + Date.now() + i;
-
-    const div = document.createElement("div");
-    div.style.margin = "10px";
-    div.innerHTML = `
-      <strong>${file.name}</strong><br>
-      <button onclick="document.getElementById('${audio.id}').play()">▶️</button>
-      <button onclick="document.getElementById('${audio.id}').pause()">⏸</button>
-      <button onclick="rewind('${audio.id}', -5)">⏪</button>
-      <button onclick="rewind('${audio.id}', 5)">⏩</button>
-    `;
-
-    div.appendChild(audio);
-    menu.appendChild(div);
-  }
-}
-
-function rewind(id, sec) {
-  const audio = document.getElementById(id);
-  audio.currentTime += sec;
-}
 </script>
 
 </body>
