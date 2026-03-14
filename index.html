@@ -50,6 +50,28 @@ height:120px;
 font-family:monospace;
 }
 
+#stopRequest{
+position:fixed;
+right:20px;
+top:120px;
+background:#ff3333;
+color:white;
+padding:15px 20px;
+border-radius:10px;
+font-weight:bold;
+display:none;
+box-shadow:0 4px 8px rgba(0,0,0,0.3);
+}
+
+#history{
+background:#eee;
+padding:10px;
+border-radius:8px;
+max-height:200px;
+overflow:auto;
+font-family:monospace;
+}
+
 </style>
 </head>
 
@@ -76,6 +98,7 @@ font-family:monospace;
 
 <button onclick="nextStop()">Next</button>
 <button onclick="resetStops()">Reset</button>
+<button onclick="requestStop()">STOP</button>
 
 </div>
 
@@ -101,6 +124,16 @@ font-family:monospace;
 
 </div>
 
+<div class="card">
+
+<h2>Stops History</h2>
+
+<div id="history"></div>
+
+</div>
+
+<div id="stopRequest">STOP REQUESTED</div>
+
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
 
@@ -110,8 +143,13 @@ let texts=[]
 let stopCoords=[]
 let index=0
 let adding=false
+let stopRequested=false
+let stopForThisStation=false
+let announcedIndex=-1
 
 const langSelect=document.getElementById("langSelect")
+
+const stopSound=new Audio("stop.mp3")
 
 const translations={
 "de-DE":"Nächster Halt",
@@ -123,16 +161,48 @@ const translations={
 }
 
 function speak(text){
-
 const u=new SpeechSynthesisUtterance(text)
 u.lang=langSelect.value
 speechSynthesis.speak(u)
+}
+
+function requestStop(){
+
+stopRequested=true
+stopForThisStation=true
+
+document.getElementById("stopRequest").style.display="block"
+
+stopSound.play()
 
 }
 
 function nextStop(){
 
 if(index>=texts.length)return
+
+let stopNote=""
+
+if(stopForThisStation){
+stopNote=" (STOP REQUESTED)"
+}
+
+let now=new Date()
+
+let time=
+now.getHours().toString().padStart(2,"0")+":"+
+now.getMinutes().toString().padStart(2,"0")+":"+
+now.getSeconds().toString().padStart(2,"0")
+
+document.getElementById("history").innerHTML+=time+" - "+texts[index]+stopNote+"<br>"
+
+if(stopRequested){
+
+document.getElementById("stopRequest").style.display="none"
+stopRequested=false
+stopForThisStation=false
+
+}
 
 document.getElementById("displayText").innerText=texts[index]
 
@@ -142,6 +212,7 @@ speak(phrase)
 speak(texts[index])
 
 index++
+announcedIndex=-1
 
 }
 
@@ -154,13 +225,17 @@ document.getElementById("displayText").innerText="Click Next"
 
 const map=L.map("map").setView([47.3769,8.5417],8)
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-maxZoom:19
-}).addTo(map)
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map)
 
 let markerLayer=L.layerGroup().addTo(map)
-
 let routingControl=null
+
+const busIcon=L.icon({
+iconUrl:"https://cdn-icons-png.flaticon.com/512/61/61231.png",
+iconSize:[32,32]
+})
+
+let busMarker=L.marker([47.3769,8.5417],{icon:busIcon}).addTo(map)
 
 function applyStops(){
 
@@ -190,16 +265,16 @@ stopCoords.push([lat,lon])
 
 L.marker([lat,lon]).addTo(markerLayer).bindPopup(name)
 
-waypoints.push(L.latLng(lat,lon))
+waypoints.push(L.latLng(lat,lon)
+
+)
 
 }
 
 })
 
 if(routingControl){
-
 map.removeControl(routingControl)
-
 }
 
 routingControl=L.Routing.control({
@@ -216,10 +291,8 @@ resetStops()
 }
 
 function addMarkerMode(){
-
 alert("Click map to add stop")
 adding=true
-
 }
 
 map.on("click",function(e){
@@ -281,14 +354,27 @@ return R*c
 
 navigator.geolocation.watchPosition(function(pos){
 
-if(index>=stopCoords.length)return
-
 const lat=pos.coords.latitude
 const lon=pos.coords.longitude
+
+busMarker.setLatLng([lat,lon])
+
+if(index>=stopCoords.length)return
 
 const stop=stopCoords[index]
 
 const dist=distance(lat,lon,stop[0],stop[1])
+
+if(dist<=100 && announcedIndex!==index){
+
+let phrase=translations[langSelect.value]||"Next stop"
+
+speak(phrase)
+speak(texts[index])
+
+announcedIndex=index
+
+}
 
 if(dist<=50){
 
