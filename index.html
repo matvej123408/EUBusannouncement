@@ -365,7 +365,7 @@ const stop=stopCoords[index]
 
 const dist=distance(lat,lon,stop[0],stop[1])
 
-if(dist<=100 && announcedIndex!==index){
+if(dist<=15 && announcedIndex!==index){
 
 let phrase=translations[langSelect.value]||"Next stop"
 
